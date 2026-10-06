@@ -1,0 +1,56 @@
+name: build-offline-docs
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Filament branch or tag to build (e.g. 5.x)"
+        required: true
+        default: "5.x"
+
+permissions:
+  contents: write   # create releases
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Clone Filament
+        run: git clone --depth 1 --branch "${{ inputs.branch }}" https://github.com/filamentphp/filament.git filament
+
+      - name: Convert docs to a Mintlify project
+        run: |
+          python3 scripts/to_mintlify.py filament/docs mint-out filament/docs-assets
+          cp filament/LICENSE.md mint-out/FILAMENT-LICENSE.md
+
+      - name: Zip converted project
+        run: |
+          NAME="filament-docs-${{ inputs.branch }}-project.zip"
+          (cd mint-out && zip -qr "../$NAME" .)
+          echo "PROJECT_ZIP=$NAME" >> "$GITHUB_ENV"
+
+      # Optional: needs a Mintlify setup that allows `mint export`. Failure is tolerated.
+      - name: Export static site (optional)
+        continue-on-error: true
+        working-directory: mint-out
+        run: |
+          npm i mint
+          npx mint export --output "../filament-docs-${{ inputs.branch }}-site.zip"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="$(git -C filament rev-parse --short HEAD)"
+          TAG="${{ inputs.branch }}-${SHA}"
+          FILES="$PROJECT_ZIP"
+          [ -f "filament-docs-${{ inputs.branch }}-site.zip" ] && FILES="$FILES filament-docs-${{ inputs.branch }}-site.zip"
+          gh release create "$TAG" $FILES \
+            --title "Filament ${{ inputs.branch }} docs @ ${SHA}" \
+            --notes "Unofficial offline build of the Filament docs from filamentphp/filament (${{ inputs.branch }} @ ${SHA}). Content is MIT licensed by the Filament project; see FILAMENT-LICENSE.md inside the project zip."

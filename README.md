@@ -19,13 +19,21 @@ It is inspired by two things:
 
 ## How it is made
 
-The conversion script (`scripts/to_mintlify.py`) was written with the help of Claude and then tested against real pages from the docs.
+The conversion script (`scripts/to_mintlify.py`) was written with the help of Claude and Deepseek and then tested against real pages from the docs.
 
 It is not really scraping. It never crawls `filamentphp.com`. Filament's documentation is written in Markdown and published in the open-source [filamentphp/filament](https://github.com/filamentphp/filament) repository under the **MIT license**, which allows copying, modifying and redistributing it as long as the license notice is kept. The script works on a normal clone of that repository:
 
-1. It reads the Markdown files in `docs/` and the screenshots in `docs-assets/`.
+1. It reads the Markdown files in `docs/` and every `packages/*/docs/` folder, plus the screenshots in `docs-assets/`. Nothing in the source tree is missed.
 2. It converts the Astro-specific parts (callouts, collapsible sections, screenshot tags, the installation selector) into their [Mintlify](https://mintlify.com) equivalents, since the live site is built with Mintlify.
 3. It generates a `docs.json` navigation from the folder structure, so the result can be previewed with the Mintlify CLI or exported as a static site.
+
+How the sidebar is laid out:
+
+- Loose pages at the root of `docs/` (for example `docs/introduction.md`, `docs/installation.md`) each become their **own top-level section**, named after the page's frontmatter title.
+- Folders inside `docs/` become nested groups.
+- Each package becomes a single top-level group (for example "Tables"), whose pages are the package's own groups. The package name is used as the first URL segment, so a page in `packages/tables/docs/03-filters/overview.md` ends up at `tables/filters/overview`.
+
+Screenshots are converted so both themes work: the script emits `<img>` tags for the light and dark variants of each screenshot, tagged with Mintlify's `#light-only` and `#dark-only` fragments. If only one variant exists, the other is dropped and counted in the run report.
 
 Each release includes Filament's `LICENSE.md` as `FILAMENT-LICENSE.md`. If you redistribute a copy, keep it with the files.
 
@@ -64,12 +72,18 @@ You only need Python 3 and Git for the conversion:
 
 ```bash
 git clone --depth 1 --branch 5.x https://github.com/filamentphp/filament.git
-python3 scripts/to_mintlify.py filament/docs mint-out filament/docs-assets
+python3 scripts/to_mintlify.py filament mint-out
 cd mint-out
 npx mint dev
 ```
 
-Check that `filament/docs` and `filament/docs-assets` exist first, since the script assumes that layout. Only the light-theme screenshots are used (`docs-assets/screenshots/images/light/`).
+The script detects the repository layout automatically: it reads `filament/docs`, every `filament/packages/*/docs`, and `filament/docs-assets`. Both the light and dark screenshot trees are copied into the project.
+
+If you only have a single docs folder (the old usage), the script still accepts it:
+
+```bash
+python3 scripts/to_mintlify.py <docs-dir> <out-dir> [<docs-assets-dir>]
+```
 
 To produce the self-contained static site, run `npx mint export --output filament-docs-site.zip` inside `mint-out`. Mintlify's documentation says offline export may require a paid plan, so this step may not work for everyone.
 
@@ -77,9 +91,9 @@ Maintainers can also run the **build-offline-docs** workflow from the Actions ta
 
 ## Known limitations
 
-- Screenshots missing from `docs-assets` are dropped. The script prints how many.
+- Screenshots missing from `docs-assets` are dropped. The script prints how many, and which light/dark variant was missing.
 - The installation page's interactive selector becomes tabs, and the `#components` URL hash no longer preselects one.
-- The lists of injectable utilities that the live site generates are not reproduced.
+- The lists of injectable utilities that the live site generates are not reproduced; the script turns the `extras` data into a plain bullet list instead.
 - Icons and fonts that Mintlify loads from a CDN may be missing offline. This is cosmetic.
 - Any custom component the script does not know about is reported at the end of the run and needs a new rule.
 

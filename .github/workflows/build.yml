@@ -49,8 +49,18 @@ jobs:
         run: |
           SHA="$(git -C filament rev-parse --short HEAD)"
           TAG="${{ inputs.branch }}-${SHA}"
+          ISO_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           FILES="$PROJECT_ZIP"
           [ -f "filament-docs-${{ inputs.branch }}-site.zip" ] && FILES="$FILES filament-docs-${{ inputs.branch }}-site.zip"
-          gh release create "$TAG" $FILES \
-            --title "Filament ${{ inputs.branch }} docs @ ${SHA}" \
-            --notes "Unofficial offline build of the Filament docs from filamentphp/filament (${{ inputs.branch }} @ ${SHA}). Content is MIT licensed by the Filament project; see FILAMENT-LICENSE.md inside the project zip."
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Tag/release already exists — just upload (or overwrite) assets
+            echo "Release $TAG already exists, uploading assets..."
+            gh release upload "$TAG" $FILES --clobber
+          else
+            gh release create "$TAG" $FILES \
+              --title "Filament ${{ inputs.branch }} docs @ ${SHA} (${ISO_DATE})" \
+              --notes "Unofficial offline build of the Filament docs from filamentphp/filament (${{ inputs.branch }} @ ${SHA}).
+          Built at: ${ISO_DATE}
+          Content is MIT licensed by the Filament project; see FILAMENT-LICENSE.md inside the project zip."
+          fi
